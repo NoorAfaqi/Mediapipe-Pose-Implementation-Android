@@ -17,6 +17,8 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
@@ -29,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var previewView: PreviewView
     private lateinit var poseLandmarker: PoseLandmarker
+    private var cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,7 +101,7 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalyzer)
+                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
             } catch (e: Exception) {
                 Log.e("CameraSetup", "Error binding camera use cases", e)
             }
@@ -111,12 +114,17 @@ class MainActivity : AppCompatActivity() {
         val mediaImage = imageProxy.image
         if (mediaImage != null && imageProxy.format == ImageFormat.YUV_420_888) {
             val bitmap = yuvToRgb(mediaImage, imageProxy)
-            val matrix = Matrix().apply {
-                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                postScale(-1f, 1f, bitmap.width.toFloat(), bitmap.height.toFloat()) // Mirror flip
+            val mpImage: MPImage
+            if (cameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA){
+                val matrix = Matrix().apply {
+                    postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                    postScale(-1f, 1f, bitmap.width.toFloat(), bitmap.height.toFloat()) // Mirror flip
+                }
+                val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                mpImage = BitmapImageBuilder(rotatedBitmap).build()
+            } else {
+                mpImage = BitmapImageBuilder(bitmap).build()
             }
-            val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            val mpImage = com.google.mediapipe.framework.image.BitmapImageBuilder(rotatedBitmap).build()
             val timestamp = imageProxy.imageInfo.timestamp
             poseLandmarker.detectAsync(mpImage, timestamp)
             imageProxy.close()
